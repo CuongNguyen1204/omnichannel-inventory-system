@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OISM.Application.Interfaces;
+using OISM.Infrastructure.Services; // Thêm namespace này để dùng PurchaseReceiptService
 
 namespace OISM.Presentation.Controllers;
 
@@ -10,17 +11,19 @@ namespace OISM.Presentation.Controllers;
 public class InventoryController : ControllerBase
 {
     private readonly IInventoryService _inventoryService;
+    private readonly PurchaseReceiptService _receiptService;
 
-    public InventoryController(IInventoryService inventoryService)
+    public InventoryController(IInventoryService inventoryService, PurchaseReceiptService receiptService)
     {
         _inventoryService = inventoryService;
+        _receiptService = receiptService;
     }
 
-    [HttpGet("stock/{branchId}/{productId}")]
-    public async Task<IActionResult> GetStock(Guid branchId, Guid productId)
+    [HttpGet("stock/{branchId}/{variantId}")]
+    public async Task<IActionResult> GetStock(Guid branchId, Guid variantId)
     {
-        var stock = await _inventoryService.GetCurrentStockAsync(branchId, productId);
-        return Ok(new { BranchId = branchId, ProductId = productId, CurrentStock = stock });
+        var stock = await _inventoryService.GetCurrentStockAsync(branchId, variantId);
+        return Ok(new { BranchId = branchId, VariantId = variantId, CurrentStock = stock });
     }
 
     [HttpPost("transfer")]
@@ -29,21 +32,22 @@ public class InventoryController : ControllerBase
         try
         {
             await _inventoryService.TransferStockAsync(
-                request.FromBranchId, request.ToBranchId, request.ProductId, request.Quantity, request.ReferenceId);
+                request.FromBranchId, request.ToBranchId, request.VariantId, request.Quantity, request.ReferenceId);
             return Ok(new { Message = "Chuyển kho thành công" });
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { Error = ex.Message }); // Bắt lỗi âm kho
+            return BadRequest(new { Error = ex.Message });
         }
     }
 
-    [HttpPost("in")]
-    public async Task<IActionResult> StockIn([FromBody] StockRequest request)
+    // API mới: Nhập mua hàng và tính WAC
+    [HttpPost("receipt")]
+    public async Task<IActionResult> PurchaseReceipt([FromBody] PurchaseReceiptRequest request)
     {
-        await _inventoryService.StockInAsync(
-            request.BranchId, request.ProductId, request.Quantity, request.ReferenceId);
-        return Ok(new { Message = "Nhập kho thành công" });
+        await _receiptService.ProcessReceiptAsync(
+            request.BranchId, request.VariantId, request.Quantity, request.UnitPrice, request.ReferenceId);
+        return Ok(new { Message = "Nhập mua hàng thành công, đã cập nhật WAC" });
     }
 
     [HttpPost("out")]
@@ -52,16 +56,17 @@ public class InventoryController : ControllerBase
         try
         {
             await _inventoryService.StockOutAsync(
-                request.BranchId, request.ProductId, request.Quantity, request.ReferenceId);
+                request.BranchId, request.VariantId, request.Quantity, request.ReferenceId);
             return Ok(new { Message = "Xuất kho thành công" });
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { Error = ex.Message }); // Trả về lỗi nếu tồn kho không đủ
+            return BadRequest(new { Error = ex.Message });
         }
+    }
 }
 
-}
-
-public record TransferRequest(Guid FromBranchId, Guid ToBranchId, Guid ProductId, int Quantity, Guid? ReferenceId);
-public record StockRequest(Guid BranchId, Guid ProductId, int Quantity, Guid? ReferenceId);
+// Cập nhật lại các Record DTOs
+public record TransferRequest(Guid FromBranchId, Guid ToBranchId, Guid VariantId, int Quantity, Guid? ReferenceId);
+public record StockRequest(Guid BranchId, Guid VariantId, int Quantity, Guid? ReferenceId);
+public record PurchaseReceiptRequest(Guid BranchId, Guid VariantId, int Quantity, decimal UnitPrice, Guid ReferenceId);

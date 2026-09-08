@@ -14,11 +14,17 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<OismDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// Đăng ký Repository
+builder.Services.AddScoped<IInventoryRepository, InventoryRepository>();
+
 // 2. Đăng ký Services (DI)
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
+
+builder.Services.AddScoped<PurchaseReceiptService>();
+builder.Services.AddScoped<StockTransferService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
