@@ -18,6 +18,7 @@ builder.Services.AddDbContext<OismDbContext>(options =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IInventoryService, InventoryService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

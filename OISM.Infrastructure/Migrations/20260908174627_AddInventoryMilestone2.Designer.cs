@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using OISM.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using OISM.Infrastructure.Persistence;
 namespace OISM.Infrastructure.Migrations
 {
     [DbContext(typeof(OismDbContext))]
-    partial class OismDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260908174627_AddInventoryMilestone2")]
+    partial class AddInventoryMilestone2
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
