@@ -1,7 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OISM.Application.Interfaces;
-using OISM.Infrastructure.Services; // Thêm namespace này để dùng PurchaseReceiptService
+using OISM.Infrastructure.Services;
+using OISM.Application.DTOs;
 
 namespace OISM.Presentation.Controllers;
 
@@ -12,11 +13,17 @@ public class InventoryController : ControllerBase
 {
     private readonly IInventoryService _inventoryService;
     private readonly PurchaseReceiptService _receiptService;
+    private readonly StockTransferService _transferService; // Thêm dòng này
 
-    public InventoryController(IInventoryService inventoryService, PurchaseReceiptService receiptService)
+    // Cập nhật Constructor
+    public InventoryController(
+        IInventoryService inventoryService, 
+        PurchaseReceiptService receiptService,
+        StockTransferService transferService) 
     {
         _inventoryService = inventoryService;
         _receiptService = receiptService;
+        _transferService = transferService;
     }
 
     [HttpGet("stock/{branchId}/{variantId}")]
@@ -31,7 +38,8 @@ public class InventoryController : ControllerBase
     {
         try
         {
-            await _inventoryService.TransferStockAsync(
+            // Đổi từ _inventoryService.TransferStockAsync thành _transferService.TransferAsync
+            await _transferService.TransferAsync(
                 request.FromBranchId, request.ToBranchId, request.VariantId, request.Quantity, request.ReferenceId);
             return Ok(new { Message = "Chuyển kho thành công" });
         }
@@ -41,7 +49,6 @@ public class InventoryController : ControllerBase
         }
     }
 
-    // API mới: Nhập mua hàng và tính WAC
     [HttpPost("receipt")]
     public async Task<IActionResult> PurchaseReceipt([FromBody] PurchaseReceiptRequest request)
     {
@@ -66,7 +73,7 @@ public class InventoryController : ControllerBase
     }
 }
 
-// Cập nhật lại các Record DTOs
+// Các định nghĩa DTOs nằm ngay tại đây để Controller có thể nhận diện
 public record TransferRequest(Guid FromBranchId, Guid ToBranchId, Guid VariantId, int Quantity, Guid? ReferenceId);
 public record StockRequest(Guid BranchId, Guid VariantId, int Quantity, Guid? ReferenceId);
 public record PurchaseReceiptRequest(Guid BranchId, Guid VariantId, int Quantity, decimal UnitPrice, Guid ReferenceId);

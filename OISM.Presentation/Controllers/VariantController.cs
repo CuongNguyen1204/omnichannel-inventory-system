@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OISM.Domain.Entities;
 using OISM.Infrastructure.Persistence;
+using OISM.Application.DTOs;
 
 namespace OISM.Presentation.Controllers;
 
@@ -59,5 +60,3 @@ public class VariantController : ControllerBase
         return $"{baseCode}{checksum}";
     }
 }
-
-public record CreateVariantRequest(Guid ProductId, string SKU, string? Barcode);

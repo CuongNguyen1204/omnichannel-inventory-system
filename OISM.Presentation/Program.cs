@@ -7,6 +7,7 @@ using OISM.Application.Interfaces;
 using OISM.Infrastructure.Persistence;
 using OISM.Presentation.Services;
 using OISM.Infrastructure.Services;
+using OISM.Infrastructure.Repositories; 
 
 var builder = WebApplication.CreateBuilder(args);
 
