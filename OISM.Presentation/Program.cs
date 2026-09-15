@@ -7,7 +7,9 @@ using OISM.Application.Interfaces;
 using OISM.Infrastructure.Persistence;
 using OISM.Presentation.Services;
 using OISM.Infrastructure.Services;
-using OISM.Infrastructure.Repositories; 
+using OISM.Infrastructure.Repositories;
+using Hangfire;
+using Hangfire.PostgreSql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +19,16 @@ builder.Services.AddDbContext<OismDbContext>(options =>
 
 // Đăng ký Repository
 builder.Services.AddScoped<IInventoryRepository, InventoryRepository>();
+
+builder.Services.AddHangfire(config => config
+    .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+    .UseSimpleAssemblyNameTypeSerializer()
+    .UseRecommendedSerializerSettings()
+    .UsePostgreSqlStorage(options => 
+        options.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
+
+// Đăng ký Service Mới
+builder.Services.AddScoped<OrderEngineService>();
 
 // 2. Đăng ký Services (DI)
 builder.Services.AddHttpContextAccessor();
@@ -76,12 +88,14 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
+app.UseHangfireDashboard("/hangfire");
 app.UseHttpsRedirection();
 app.UseAuthentication(); 
 app.UseAuthorization();

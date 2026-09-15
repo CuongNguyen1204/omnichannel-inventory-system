@@ -19,18 +19,27 @@ public class OismDbContext : DbContext
     public DbSet<Category> Categories { get; set; }
     public DbSet<Product> Products { get; set; }
     public DbSet<InventoryLedger> InventoryLedgers { get; set; }
+    
+    public DbSet<Order> Orders { get; set; }
+    public DbSet<OrderItem> OrderItems { get; set; }
+    public DbSet<InventorySummary> InventorySummaries { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
         
-        // NFR-TENANT-01: Global Query Filter cho Data Isolation
+        // Global Query Filter cho Data Isolation
         builder.Entity<Branch>().HasQueryFilter(e => e.TenantId == _currentTenantId);
         builder.Entity<Category>().HasQueryFilter(e => e.TenantId == _currentTenantId);
         builder.Entity<Product>().HasQueryFilter(e => e.TenantId == _currentTenantId);
         builder.Entity<InventoryLedger>().HasQueryFilter(e => e.TenantId == _currentTenantId);
+        
+        // BỔ SUNG FILTER MILESTONE 3
+        builder.Entity<Order>().HasQueryFilter(e => e.TenantId == _currentTenantId);
+        builder.Entity<OrderItem>().HasQueryFilter(e => e.TenantId == _currentTenantId);
+        builder.Entity<InventorySummary>().HasQueryFilter(e => e.TenantId == _currentTenantId);
 
-        // Tạo Index cho SKU để tra cứu nhanh và tránh trùng lặp trong cùng 1 Tenant
+        // Tạo Index cho SKU
         builder.Entity<Product>()
             .HasIndex(p => new { p.TenantId, p.Sku })
             .IsUnique();

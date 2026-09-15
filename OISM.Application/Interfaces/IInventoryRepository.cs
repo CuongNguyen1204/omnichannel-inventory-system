@@ -1,4 +1,6 @@
-using OISM.Domain.Entities;
+using System;
+using System.Threading.Tasks;
+using OISM.Domain.Entities; 
 
 namespace OISM.Application.Interfaces;
 
