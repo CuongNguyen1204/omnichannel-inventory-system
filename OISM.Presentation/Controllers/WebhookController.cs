@@ -1,7 +1,9 @@
 using Hangfire;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using OISM.Domain.Entities;
 using OISM.Infrastructure.Services;
+using OISM.Presentation.Hubs;
 
 namespace OISM.Presentation.Controllers;
 
@@ -11,11 +13,16 @@ public class WebhookController : ControllerBase
 {
     private readonly OrderEngineService _orderEngine;
     private readonly IBackgroundJobClient _backgroundJobClient;
+    private readonly IHubContext<OrderHub> _hubContext;
 
-    public WebhookController(OrderEngineService orderEngine, IBackgroundJobClient backgroundJobClient)
+    public WebhookController(
+        OrderEngineService orderEngine, 
+        IBackgroundJobClient backgroundJobClient,
+        IHubContext<OrderHub> hubContext)
     {
         _orderEngine = orderEngine;
         _backgroundJobClient = backgroundJobClient;
+        _hubContext = hubContext;
     }
 
     // FR-SIM: Bắt sự kiện đơn hàng mới từ Shopee/TikTok
@@ -35,6 +42,14 @@ public class WebhookController : ControllerBase
             // 2. Schedule Hangfire Job hủy đơn sau 15 phút nếu không được thanh toán/Confirmed
             _backgroundJobClient.Schedule(() => 
                 _orderEngine.CancelExpiredReservationAsync(order.Id), TimeSpan.FromMinutes(15));
+
+            // 3. Gửi thông báo realtime qua SignalR
+            await _hubContext.Clients.All.SendAsync("ReceiveNewOrder", new 
+            { 
+                OrderId = order.Id, 
+                Message = "Ting ting! Có đơn hàng mới từ Shopee/TikTok!",
+                Time = DateTimeOffset.UtcNow
+            });
 
             return Ok(new { OrderId = order.Id, Status = order.Status.ToString() });
         }
