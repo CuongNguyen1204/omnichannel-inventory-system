@@ -16,7 +16,7 @@ export const useOrderSignalR = () => {
             // Push âm thanh
             const audio = new Audio('/sounds/cash-register.mp3'); // Đặt file mp3 vào thư mục public
             audio.play().catch(e => console.log("Audio play blocked by browser", e));
-            // Có thể kết hợp toast notification (react-toastify) ở đây
+            // Cấp toast notification (react-toastify)
         });
 
         connection.start()

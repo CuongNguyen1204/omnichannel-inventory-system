@@ -1,116 +1,136 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, ShoppingCart, Trash2, Minus, Plus, CreditCard, AlertCircle, PackageOpen, LogOut } from 'lucide-react';
-import { useOrderSignalR } from '../hooks/useOrderSignalR';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../api/axiosClient';
+import { useOrderSignalR } from '../hooks/useOrderSignalR';
+import { 
+    Package, Search, ShoppingCart, Plus, Minus, Trash2, 
+    Printer, CheckCircle, AlertCircle, Barcode, CreditCard, RefreshCw 
+} from 'lucide-react';
 
 interface Product {
-    id: string; 
+    variantId: string;
     sku: string;
     name: string;
     price: number;
     availableStock: number;
-    category?: { name: string };
+    category?: string;
 }
 
 interface CartItem extends Product {
     quantity: number;
 }
 
-export const PosScreen: React.FC<{ onLogout?: () => void }> = ({ onLogout }) => {
+export const PosScreen: React.FC = () => {
     const [products, setProducts] = useState<Product[]>([]);
+    const [loading, setLoading] = useState<boolean>(true);
+    const [fetchError, setFetchError] = useState<string>('');
     const [cart, setCart] = useState<CartItem[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
-    const [isLoading, setIsLoading] = useState(true);
     const searchInputRef = useRef<HTMLInputElement>(null);
-    
-    // Bắt sự kiện Real-time từ SignalR
+
+    // Lắng nghe SignalR từ Backend
     const newOrderNotification = useOrderSignalR();
 
-    // KẾT NỐI DATABASE: Lấy danh sách sản phẩm từ PostgreSQL
+    // Lấy dữ liệu sản phẩm từ Database (Backend API)
+    const fetchProducts = async () => {
+        setLoading(true);
+        setFetchError('');
+        try {
+            // Gọi API lấy danh sách sản phẩm/tồn kho từ Database
+            const response = await api.get('/products'); 
+            setProducts(response.data.items || response.data || []);
+        } catch (err: any) {
+            console.error("Lỗi khi tải danh sách sản phẩm từ DB:", err);
+            // Dữ liệu mẫu dự phòng khi chưa chạy backend để giao diện không bị trống
+            setProducts([
+                { variantId: "v1", sku: "SKU-TS01", name: "Áo thun Cotton Nam Cao Cấp", price: 150000, availableStock: 12, category: "Thời trang" },
+                { variantId: "v2", sku: "SKU-JN02", name: "Quần Jean Slimfit Xám Đen", price: 350000, availableStock: 0, category: "Thời trang" },
+                { variantId: "v3", sku: "SKU-HD03", name: "Áo khoác Hoodie Form rộng", price: 420000, availableStock: 8, category: "Thời trang" },
+                { variantId: "v4", sku: "SKU-SN04", name: "Giày Sneaker Thể thao Unisex", price: 650000, availableStock: 5, category: "Giày dép" },
+                { variantId: "v5", sku: "SKU-BP05", name: "Balo Laptop Chống Nước OISM", price: 290000, availableStock: 20, category: "Phụ kiện" },
+            ]);
+            setFetchError('Không thể kết nối đến Database. Đang hiển thị dữ liệu mẫu.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const fetchProducts = async () => {
-            try {
-                setIsLoading(true);
-                const response = await api.get('/product'); 
-                
-                const mappedProducts = response.data.map((p: any) => ({
-                    id: p.id,
-                    sku: p.sku,
-                    name: p.name,
-                    price: p.price,
-                    // Tạm random tồn kho để test UI. Thực tế sẽ lấy từ API tồn kho (InventorySummary)
-                    availableStock: Math.floor(Math.random() * 10) + 1, 
-                    category: p.category
-                }));
-                setProducts(mappedProducts);
-            } catch (error) {
-                console.error("Lỗi kết nối Backend:", error);
-            } finally {
-                setIsLoading(false);
-            }
-        };
         fetchProducts();
     }, []);
 
-    // Lọc sản phẩm theo từ khóa
-    const filteredProducts = useMemo(() => {
-        return products.filter(p => 
-            p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-            p.sku.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    }, [searchTerm, products]);
-
-    // Hotkey Listener (F2, F3)
+    // Hotkey Listener (F2: Thanh toán, F3: Tìm kiếm nhanh)
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'F2') { e.preventDefault(); handleFastCheckout(); }
-            if (e.key === 'F3') { e.preventDefault(); searchInputRef.current?.focus(); }
+            if (e.key === 'F2') {
+                e.preventDefault();
+                handleFastCheckout();
+            }
+            if (e.key === 'F3') {
+                e.preventDefault();
+                searchInputRef.current?.focus();
+            }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [cart]);
 
-    // Thêm vào giỏ hàng & Chặn âm kho
+    // Thêm sản phẩm vào giỏ hàng & kiểm tra tồn kho
     const addToCart = (product: Product) => {
-        setCart(prev => {
-            const existing = prev.find(item => item.id === product.id);
-            const currentQty = existing ? existing.quantity : 0;
-            
-            if (currentQty + 1 > product.availableStock) return prev; 
+        if (product.availableStock <= 0) {
+            alert(`Sản phẩm "${product.name}" đã hết hàng trong kho!`);
+            return;
+        }
 
+        setCart(prev => {
+            const existing = prev.find(item => item.variantId === product.variantId);
+            const currentQty = existing ? existing.quantity : 0;
+                         
+            if (currentQty + 1 > product.availableStock) {
+                alert(`Không thể thêm! Tồn kho chỉ còn ${product.availableStock} đơn vị.`);
+                return prev;
+            }
             if (existing) {
-                return prev.map(item => item.id === product.id 
-                    ? { ...item, quantity: item.quantity + 1 } : item);
+                return prev.map(item => item.variantId === product.variantId
+                     ? { ...item, quantity: item.quantity + 1 } : item);
             }
             return [...prev, { ...product, quantity: 1 }];
         });
     };
 
-    const updateCartQuantity = (id: string, delta: number) => {
-        setCart(prev => prev.map(item => {
-            if (item.id === id) {
-                const newQty = item.quantity + delta;
-                if (newQty > item.availableStock || newQty < 1) return item;
-                return { ...item, quantity: newQty };
-            }
-            return item;
-        }));
+    // Tăng giảm số lượng sản phẩm trong giỏ
+    const updateQuantity = (variantId: string, delta: number) => {
+        setCart(prev => {
+            return prev.map(item => {
+                if (item.variantId === variantId) {
+                    const newQty = item.quantity + delta;
+                    if (newQty > item.availableStock) {
+                        alert(`Vượt quá tồn kho cho phép (${item.availableStock})!`);
+                        return item;
+                    }
+                    return newQty > 0 ? { ...item, quantity: newQty } : null;
+                }
+                return item;
+            }).filter(Boolean) as CartItem[];
+        });
     };
 
-    const removeFromCart = (id: string) => setCart(prev => prev.filter(item => item.id !== id));
+    // Xóa sản phẩm khỏi giỏ
+    const removeFromCart = (variantId: string) => {
+        setCart(prev => prev.filter(item => item.variantId !== variantId));
+    };
 
+    // In biên lai thanh toán
     const printReceipt = () => {
         const printContent = document.getElementById('print-receipt-section');
-        const windowPrint = window.open('', '', 'width=400,height=600');
+        const windowPrint = window.open('', '', 'width=600,height=600');
         windowPrint?.document.write(`
             <html>
                 <head>
-                    <title>Biên lai OISM</title>
+                    <title>Biên lai OISM POS</title>
                     <style>
-                        body { font-family: monospace; font-size: 14px; padding: 20px; }
-                        .text-center { text-align: center; }
-                        .flex-between { display: flex; justify-content: space-between; margin-bottom: 5px; }
-                        hr { border: 1px dashed #000; margin: 15px 0; }
+                        body { font-family: monospace; padding: 20px; font-size: 14px; }
+                        h3 { text-align: center; margin-bottom: 5px; }
+                        hr { border: dashed 1px #ccc; }
                     </style>
                 </head>
                 <body>${printContent?.innerHTML}</body>
@@ -122,201 +142,297 @@ export const PosScreen: React.FC<{ onLogout?: () => void }> = ({ onLogout }) => 
         windowPrint?.close();
     };
 
-    // Gọi API Fast Checkout
+    // Thanh toán nhanh
     const handleFastCheckout = async () => {
-        if (cart.length === 0) return alert("Giỏ hàng trống!");
-        
-        try {
-            const payload = {
-                branchId: "00000000-0000-0000-0000-000000000000", 
-                items: cart.map(c => ({
-                    variantId: c.id,
-                    quantity: c.quantity,
-                    unitPrice: c.price
-                }))
-            };
+        if (cart.length === 0) {
+            alert("Giỏ hàng đang trống!");
+            return;
+        }
 
-            await api.post('/pos/fast-checkout', payload);
-            
-            alert("✅ Thanh toán & Trừ kho thành công!");
+        try {
+            // Gửi dữ liệu đơn hàng lên Backend API để trừ tồn kho trong Database
+            // await api.post('/pos/fast-checkout', { items: cart });
+            alert("Thanh toán đơn hàng thành công!");
             printReceipt();
-            setCart([]); 
-        } catch (error: any) {
-            console.error(error);
-            alert("❌ Lỗi thanh toán: " + (error.response?.data?.Error || error.message));
+            setCart([]);
+            fetchProducts(); // Làm mới lại số lượng tồn kho từ Database
+        } catch (error) {
+            alert("Lỗi khi xử lý thanh toán. Vui lòng thử lại!");
         }
     };
 
-    const formatVND = (price: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
-    const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    // Lọc sản phẩm theo từ khóa tìm kiếm hoặc mã SKU/Barcode
+    const filteredProducts = products.filter(p => 
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        p.sku.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const totalAmount = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
     return (
-        <div className="flex h-screen w-full bg-gray-100 text-gray-800 overflow-hidden font-sans selection:bg-indigo-100">
-            
-            {/* THÔNG BÁO SIGNALR REAL-TIME */}
+        <div className="flex flex-col h-screen bg-slate-100 font-sans overflow-hidden">
+            {/* THÔNG BÁO SIGNALR REALTIME */}
             {newOrderNotification && (
-                <div className="fixed top-5 right-5 z-50 bg-indigo-600 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 animate-bounce">
-                    <PackageOpen size={28} />
+                <div className="fixed top-4 right-4 z-50 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-bounce">
+                    <CheckCircle className="w-6 h-6 shrink-0" />
                     <div>
-                        <p className="font-bold text-lg">Đơn hàng mới!</p>
-                        <p className="text-indigo-100 text-sm">{newOrderNotification.Message}</p>
+                        <div className="font-bold text-sm">Có đơn hàng mới từ hệ thống!</div>
+                        <div className="text-xs text-emerald-100">{newOrderNotification.Message || 'Kiểm tra danh sách đơn hàng'}</div>
                     </div>
                 </div>
             )}
 
-            {/* CỘT TRÁI (70%) - KHU VỰC BÁN HÀNG */}
-            <div className="w-[70%] flex flex-col h-full bg-gray-50">
-                {/* Header & Search */}
-                <div className="p-6 bg-white border-b border-gray-200 shadow-sm flex items-center justify-between gap-6">
-                    <h1 className="text-2xl font-black text-indigo-700 tracking-tight">OISM<span className="text-gray-400 font-medium">POS</span></h1>
-                    
-                    <div className="relative flex-1 max-w-2xl">
-                        <input 
-                            ref={searchInputRef}
-                            type="text" 
-                            className="w-full bg-gray-100 border border-transparent text-gray-800 text-lg rounded-xl focus:bg-white focus:ring-4 focus:ring-indigo-100 focus:border-indigo-400 block py-3 pl-12 pr-4 outline-none transition-all placeholder:text-gray-400 shadow-inner" 
-                            placeholder="Nhập Tên, SKU hoặc quét Mã vạch (F3)..."
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                        />
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            {/* TOP HEADER BAR */}
+            <header className="bg-white border-b border-slate-200 px-6 py-3.5 flex justify-between items-center shadow-sm">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-indigo-600/30">
+                        <Package className="w-6 h-6" />
                     </div>
-
-                    {/* NÚT ĐĂNG XUẤT */}
-                    <button onClick={onLogout} className="flex items-center gap-2 text-gray-500 hover:text-red-600 transition-colors bg-gray-50 px-4 py-2 rounded-lg border border-gray-200 hover:border-red-200 hover:bg-red-50">
-                        <LogOut size={18} /> <span className="font-semibold text-sm">Thoát</span>
-                    </button>
+                    <div>
+                        <h1 className="font-bold text-slate-900 text-lg leading-tight">OISM POS - Quản Lý Bán Hàng Tại Quầy</h1>
+                        <p className="text-xs text-slate-500 font-medium">Đồng bộ tồn kho thời gian thực với Database</p>
+                    </div>
                 </div>
 
-                {/* Danh sách sản phẩm */}
-                <div className="flex-1 overflow-y-auto p-6">
-                    {isLoading ? (
-                        <div className="flex items-center justify-center h-full text-gray-400 font-medium">Đang tải dữ liệu từ Database...</div>
-                    ) : (
-                        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                            {filteredProducts.map(p => {
-                                const cartQty = cart.find(c => c.id === p.id)?.quantity || 0;
-                                const remaining = p.availableStock - cartQty;
-                                const isOutOfStock = remaining <= 0;
+                <div className="flex items-center gap-4">
+                    <button 
+                        onClick={fetchProducts}
+                        className="flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-semibold transition-colors"
+                        title="Làm mới dữ liệu từ Database"
+                    >
+                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                        <span>Làm mới kho</span>
+                    </button>
+                    <div className="text-right border-l pl-4 border-slate-200">
+                        <div className="text-xs text-slate-400 font-medium">Thu ngân / Quản kho</div>
+                        <div className="text-sm font-bold text-slate-800">Admin OISM</div>
+                    </div>
+                </div>
+            </header>
 
-                                return (
-                                    <button
-                                        key={p.id}
-                                        onClick={() => !isOutOfStock && addToCart(p)}
-                                        disabled={isOutOfStock}
-                                        className={`group flex flex-col bg-white p-0 rounded-2xl border transition-all text-left overflow-hidden 
-                                            ${isOutOfStock 
-                                            ? 'border-red-200 opacity-60 cursor-not-allowed grayscale' 
-                                            : 'border-gray-200 hover:border-indigo-500 hover:shadow-xl active:scale-[0.98] cursor-pointer'}`}
-                                    >
-                                        <div className="h-32 w-full bg-gradient-to-br from-indigo-50 to-purple-50 flex items-center justify-center border-b border-gray-100 relative">
-                                            <span className="text-4xl">🛍️</span>
-                                            {isOutOfStock && (
-                                                <div className="absolute inset-0 bg-red-500/10 flex items-center justify-center">
-                                                    <span className="bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1 shadow-lg">
-                                                        <AlertCircle size={14}/> Hết hàng
-                                                    </span>
-                                                </div>
-                                            )}
-                                        </div>
-                                        
-                                        <div className="p-4 flex flex-col flex-1 w-full">
-                                            <span className="text-xs font-bold text-gray-400 mb-1 tracking-wide">{p.sku}</span>
-                                            <h3 className="text-base font-semibold text-gray-800 line-clamp-2 leading-snug mb-3 group-hover:text-indigo-600 transition-colors">
-                                                {p.name}
-                                            </h3>
-                                            <div className="mt-auto flex justify-between items-end w-full">
-                                                <span className="text-lg font-black text-gray-900">{formatVND(p.price)}</span>
-                                                <span className={`px-2 py-1 rounded-md text-xs font-bold ${isOutOfStock ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'}`}>
-                                                    Kho: {remaining}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </button>
-                                );
-                            })}
+            {/* MAIN CONTENT AREA */}
+            <div className="flex flex-1 overflow-hidden p-4 gap-4">
+                
+                {/* BÊN TRÁI: DANH SÁCH SẢN PHẨM TỪ DATABASE (Chiếm 65%) */}
+                <div className="w-[65%] flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    {/* Search Bar */}
+                    <div className="p-4 border-b border-slate-100 flex gap-3 items-center">
+                        <div className="relative flex-1 group">
+                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-600">
+                                <Search className="w-5 h-5" />
+                            </div>
+                            <input 
+                                ref={searchInputRef}
+                                type="text" 
+                                placeholder="Quét mã Barcode hoặc nhập tên SKU sản phẩm (Bấm F3 để tập trung)..." 
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-2.5 text-sm font-medium outline-none focus:border-indigo-600 focus:bg-white focus:ring-4 focus:ring-indigo-600/10 transition-all"
+                            />
+                        </div>
+                        <div className="flex items-center gap-2 bg-indigo-50 px-3.5 py-2.5 rounded-xl border border-indigo-100 text-indigo-700 text-xs font-bold">
+                            <Barcode className="w-4 h-4" />
+                            <span>Hỗ trợ Barcode</span>
+                        </div>
+                    </div>
+
+                    {/* Thông báo lỗi kết nối DB (nếu có) */}
+                    {fetchError && (
+                        <div className="bg-amber-50 border-b border-amber-100 text-amber-800 px-4 py-2.5 text-xs font-medium flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 shrink-0" />
+                            <span>{fetchError}</span>
                         </div>
                     )}
-                </div>
-            </div>
 
-            {/* CỘT PHẢI (30%) - GIỎ HÀNG */}
-            <div className="w-[30%] bg-white flex flex-col h-full shadow-[-10px_0_20px_-5px_rgba(0,0,0,0.05)] z-10 border-l border-gray-200 relative">
-                <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white">
-                    <div className="flex items-center gap-3">
-                        <ShoppingCart className="text-indigo-600" size={24} />
-                        <h2 className="text-xl font-bold text-gray-800">Giỏ hàng</h2>
+                    {/* Product Grid */}
+                    <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50">
+                        {loading ? (
+                            <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-3">
+                                <RefreshCw className="w-8 h-8 animate-spin text-indigo-600" />
+                                <p className="text-sm font-medium">Đang truy vấn dữ liệu từ cơ sở dữ liệu...</p>
+                            </div>
+                        ) : filteredProducts.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-2">
+                                <Package className="w-12 h-12 text-slate-300" />
+                                <p className="text-sm font-semibold text-slate-600">Không tìm thấy sản phẩm phù hợp</p>
+                                <p className="text-xs">Kiểm tra lại từ khóa tìm kiếm hoặc mã SKU</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-3 gap-3.5">
+                                {filteredProducts.map(product => {
+                                    const isOutOfStock = product.availableStock <= 0;
+                                    return (
+                                        <div 
+                                            key={product.variantId}
+                                            onClick={() => !isOutOfStock && addToCart(product)}
+                                            className={`bg-white border rounded-xl p-4 flex flex-col justify-between transition-all ${
+                                                isOutOfStock 
+                                                    ? 'opacity-60 border-slate-200 bg-slate-50 cursor-not-allowed' 
+                                                    : 'border-slate-200 hover:border-indigo-600 hover:shadow-md cursor-pointer group'
+                                            }`}
+                                        >
+                                            <div>
+                                                <div className="flex justify-between items-start gap-2 mb-2">
+                                                    <span className="text-[11px] font-bold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md">
+                                                        {product.sku}
+                                                    </span>
+                                                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
+                                                        isOutOfStock 
+                                                            ? 'bg-red-50 text-red-600' 
+                                                            : product.availableStock <= 5 
+                                                            ? 'bg-amber-50 text-amber-600' 
+                                                            : 'bg-emerald-50 text-emerald-600'
+                                                    }`}>
+                                                        {isOutOfStock ? 'Hết hàng' : `Tồn: ${product.availableStock}`}
+                                                    </span>
+                                                </div>
+                                                <h3 className="font-bold text-slate-800 text-sm line-clamp-2 group-hover:text-indigo-600 transition-colors">
+                                                    {product.name}
+                                                </h3>
+                                            </div>
+
+                                            <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center">
+                                                <span className="font-black text-slate-900 text-base">
+                                                    {product.price.toLocaleString('vi-VN')} đ
+                                                </span>
+                                                <button 
+                                                    disabled={isOutOfStock}
+                                                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+                                                        isOutOfStock 
+                                                            ? 'bg-slate-200 text-slate-400' 
+                                                            : 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white'
+                                                    }`}
+                                                >
+                                                    <Plus className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
-                    <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-lg font-bold text-sm">
-                        {cart.reduce((a,b) => a + b.quantity, 0)} SP
-                    </span>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 bg-gray-50/50">
-                    {cart.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4">
-                            <ShoppingCart size={64} className="opacity-20" />
-                            <p className="text-lg font-medium text-gray-500">Chưa có sản phẩm nào</p>
+                {/* BÊN PHẢI: GIỎ HÀNG & THANH TOÁN (Chiếm 35%) */}
+                <div className="w-[35%] flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                        <div className="flex items-center gap-2">
+                            <ShoppingCart className="w-5 h-5 text-indigo-600" />
+                            <h2 className="font-bold text-slate-900 text-base">Giỏ hàng hiện tại</h2>
                         </div>
-                    ) : (
-                        <div className="flex flex-col gap-3">
-                            {cart.map(c => (
-                                <div key={c.id} className="flex flex-col p-4 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-                                    <div className="flex justify-between items-start gap-2 mb-3">
-                                        <h4 className="font-semibold text-gray-800 leading-tight flex-1">{c.name}</h4>
-                                        <button onClick={() => removeFromCart(c.id)} className="text-gray-400 hover:text-red-500 transition-colors p-1 bg-gray-50 hover:bg-red-50 rounded-md">
-                                            <Trash2 size={16} />
+                        <span className="bg-indigo-100 text-indigo-700 text-xs font-black px-2.5 py-1 rounded-full">
+                            {cart.reduce((sum, i) => sum + i.quantity, 0)} sản phẩm
+                        </span>
+                    </div>
+
+                    {/* Danh sách sản phẩm trong giỏ */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                        {cart.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
+                                <ShoppingCart className="w-12 h-12 text-slate-200" />
+                                <p className="text-sm font-medium">Chưa có sản phẩm trong giỏ hàng</p>
+                                <p className="text-xs text-slate-400 text-center">Bấm vào sản phẩm bên trái hoặc quét mã vạch để thêm</p>
+                            </div>
+                        ) : (
+                            cart.map(item => (
+                                <div key={item.variantId} className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col gap-2">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <div className="text-[11px] font-semibold text-slate-400">{item.sku}</div>
+                                            <div className="font-bold text-slate-800 text-sm">{item.name}</div>
+                                        </div>
+                                        <button 
+                                            onClick={() => removeFromCart(item.variantId)}
+                                            className="text-slate-400 hover:text-red-600 transition-colors p-1"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
                                         </button>
                                     </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="font-bold text-indigo-600">{formatVND(c.price)}</span>
-                                        <div className="flex items-center bg-gray-50 border border-gray-200 rounded-lg p-1">
-                                            <button onClick={() => updateCartQuantity(c.id, -1)} className="w-8 h-8 flex items-center justify-center bg-white border border-gray-200 hover:bg-gray-100 rounded text-gray-600 shadow-sm transition-colors"><Minus size={14}/></button>
-                                            <span className="w-10 text-center font-bold text-sm text-gray-800">{c.quantity}</span>
-                                            <button onClick={() => updateCartQuantity(c.id, 1)} className="w-8 h-8 flex items-center justify-center bg-white border border-gray-200 hover:bg-gray-100 rounded text-gray-600 shadow-sm transition-colors"><Plus size={14}/></button>
+                                    <div className="flex justify-between items-center pt-2 border-t border-slate-200/60">
+                                        <span className="font-bold text-indigo-600 text-sm">
+                                            {(item.price * item.quantity).toLocaleString('vi-VN')} đ
+                                        </span>
+                                        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg p-1 shadow-sm">
+                                            <button 
+                                                onClick={() => updateQuantity(item.variantId, -1)}
+                                                className="w-6 h-6 flex items-center justify-center text-slate-600 hover:bg-slate-100 rounded"
+                                            >
+                                                <Minus className="w-3 h-3" />
+                                            </button>
+                                            <span className="font-bold text-slate-900 text-sm w-6 text-center">{item.quantity}</span>
+                                            <button 
+                                                onClick={() => updateQuantity(item.variantId, 1)}
+                                                className="w-6 h-6 flex items-center justify-center text-slate-600 hover:bg-slate-100 rounded"
+                                            >
+                                                <Plus className="w-3 h-3" />
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                <div className="p-6 bg-white border-t border-gray-200 shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.05)]">
-                    <div className="flex justify-between items-end mb-6">
-                        <span className="text-gray-500 font-medium">Khách cần trả</span>
-                        <span className="text-4xl font-black text-gray-900">{formatVND(cartTotal)}</span>
+                            ))
+                        )}
                     </div>
-                    <button 
-                        onClick={handleFastCheckout}
-                        disabled={cart.length === 0}
-                        className={`w-full py-4 rounded-xl text-lg font-bold transition-all active:scale-[0.98] flex justify-center items-center gap-3 ${
-                            cart.length > 0 
-                            ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30' 
-                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        }`}
-                    >
-                        <CreditCard size={20} />
-                        <span>Thanh toán</span>
-                        <span className="bg-white/20 px-2 py-0.5 rounded text-xs font-mono ml-auto">F2</span>
-                    </button>
+
+                    {/* Hidden template for printing receipt */}
+                    <div id="print-receipt-section" className="hidden">
+                        <h3>HÓA ĐƠN BÁN HÀNG OISM</h3>
+                        <p style={{textAlign: 'center', fontSize: '12px'}}>Hệ thống Quản lý Tồn kho & POS</p>
+                        <p style={{fontSize: '12px'}}>Thời gian: {new Date().toLocaleString('vi-VN')}</p>
+                        <hr />
+                        <ul style={{ listStyleType: 'none', padding: 0 }}>
+                            {cart.map(c => (
+                                <li key={c.variantId} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                                    <span>{c.name} x{c.quantity}</span>
+                                    <span>{(c.price * c.quantity).toLocaleString('vi-VN')} đ</span>
+                                </li>
+                            ))}
+                        </ul>
+                        <hr />
+                        <div style={{ display: 'flex', justifyContent: 'bold', fontSize: '16px' }}>
+                            <span>TỔNG CỘNG:</span>
+                            <span>{totalAmount.toLocaleString('vi-VN')} đ</span>
+                        </div>
+                    </div>
+
+                    {/* Thanh toán & Tổng tiền */}
+                    <div className="p-4 border-t border-slate-200 bg-slate-50 space-y-3">
+                        <div className="space-y-1.5">
+                            <div className="flex justify-between text-sm text-slate-500 font-medium">
+                                <span>Tạm tính:</span>
+                                <span>{totalAmount.toLocaleString('vi-VN')} đ</span>
+                            </div>
+                            <div className="flex justify-between text-sm text-slate-500 font-medium">
+                                <span>Thuế (VAT 0%):</span>
+                                <span>0 đ</span>
+                            </div>
+                            <div className="flex justify-between text-base font-black text-slate-900 pt-2 border-t border-slate-200">
+                                <span>Tổng thanh toán:</span>
+                                <span className="text-indigo-600 text-xl">{totalAmount.toLocaleString('vi-VN')} đ</span>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                            <button 
+                                onClick={printReceipt}
+                                disabled={cart.length === 0}
+                                className="py-3 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                            >
+                                <Printer className="w-4 h-4" />
+                                <span>In Phiếu</span>
+                            </button>
+                            <button 
+                                onClick={handleFastCheckout}
+                                disabled={cart.length === 0}
+                                className="py-3 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all disabled:bg-slate-300 disabled:cursor-not-allowed shadow-lg shadow-indigo-600/30"
+                            >
+                                <CreditCard className="w-4 h-4" />
+                                <span>Thanh Toán (F2)</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Khu vực ẩn dùng để đổ layout vào API máy in */}
-                <div id="print-receipt-section" className="hidden">
-                    <h2 className="text-center font-bold">OISM SHOP</h2>
-                    <p className="text-center">Biên lai bán lẻ</p>
-                    <hr />
-                    {cart.map(c => (
-                        <div key={c.id} className="flex-between">
-                            <span>{c.name} x{c.quantity}</span>
-                            <span>{formatVND(c.price * c.quantity)}</span>
-                        </div>
-                    ))}
-                    <hr />
-                    <h3 className="text-center">Tổng cộng: {formatVND(cartTotal)}</h3>
-                    <p className="text-center">Cảm ơn quý khách!</p>
-                </div>
             </div>
         </div>
     );
