@@ -19,7 +19,7 @@ public class OismDbContext : DbContext
     public DbSet<Category> Categories { get; set; }
     public DbSet<Product> Products { get; set; }
     public DbSet<InventoryLedger> InventoryLedgers { get; set; }
-    
+    public DbSet<Variant> Variants { get; set; } 
     public DbSet<Order> Orders { get; set; }
     public DbSet<OrderItem> OrderItems { get; set; }
     public DbSet<InventorySummary> InventorySummaries { get; set; }

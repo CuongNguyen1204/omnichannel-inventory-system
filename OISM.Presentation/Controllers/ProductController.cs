@@ -21,7 +21,10 @@ public class ProductController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetProducts()
     {
-        var products = await _dbContext.Products.Include(p => p.Category).ToListAsync();
+        var products = await _dbContext.Products
+        .Include(p => p.Category)
+        .IgnoreQueryFilters()
+        .ToListAsync();
         return Ok(products);
     }
 

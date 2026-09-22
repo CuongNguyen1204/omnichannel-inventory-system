@@ -1,10 +1,11 @@
 version: '3.8'
 services:
   db:
-    image: postgres:latest
+    image: postgres:17
     container_name: oism-postgres
     environment:
       POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: oism_db
     ports:
       - "5432:5432"
     volumes:

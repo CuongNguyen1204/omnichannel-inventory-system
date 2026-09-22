@@ -114,11 +114,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
 
-// UseCors phải được gọi trước UseAuthentication và UseAuthorization
+//app.UseHttpsRedirection();
 app.UseCors("PosCorsPolicy");
-
 app.UseAuthentication(); 
 app.UseAuthorization();
 
@@ -126,5 +124,12 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<OrderHub>("/order-hub");
 app.UseHangfireDashboard("/hangfire");
+
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<OismDbContext>();
+    await OISM.Infrastructure.Persistence.DataSeeder.SeedAsync(dbContext);
+}
+
 
 app.Run();
