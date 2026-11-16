@@ -22,13 +22,14 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<OismDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// --- Hangfire ---
+// --- Hangfire (FR-SIM-03) ---
 builder.Services.AddHangfire(config => config
     .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
     .UseSimpleAssemblyNameTypeSerializer()
     .UseRecommendedSerializerSettings()
-    .UsePostgreSqlStorage(options => 
+    .UsePostgreSqlStorage(options =>
         options.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
+builder.Services.AddHangfireServer();
 
 // --- Repositories ---
 builder.Services.AddScoped<IInventoryRepository, InventoryRepository>();
@@ -41,6 +42,7 @@ builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<OrderEngineService>();
 builder.Services.AddScoped<PurchaseReceiptService>();
 builder.Services.AddScoped<StockTransferService>();
+builder.Services.AddScoped<OrderExpirationJobService>();
 
 // --- API & Web Services ---
 builder.Services.AddControllers();
@@ -52,15 +54,17 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("PosCorsPolicy", policyBuilder =>
     {
-        policyBuilder.WithOrigins("http://localhost:5173", "http://localhost:3000") // URL của React app
+        policyBuilder.WithOrigins("http://localhost:5173", "http://localhost:3000")
                .AllowAnyHeader()
                .AllowAnyMethod()
-               .AllowCredentials(); // Rất quan trọng cho SignalR
+               .AllowCredentials();
     });
 });
 
-// --- JWT Authentication & Authorization ---
-var jwtSecret = builder.Configuration["JwtSettings:Secret"] ?? throw new InvalidOperationException("JWT Secret is missing");
+// --- JWT Authentication & Authorization (Hỗ trợ cả HTTP Header & SignalR Query String) ---
+var jwtSecret = builder.Configuration["JwtSettings:Secret"]
+    ?? throw new InvalidOperationException("JWT Secret is missing");
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -77,6 +81,21 @@ builder.Services.AddAuthentication(options =>
         ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
         ValidAudience = builder.Configuration["JwtSettings:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
+    };
+
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken) &&
+                (path.StartsWithSegments("/order-hub") || path.StartsWithSegments("/orderHub")))
+            {
+                context.Token = accessToken;
+            }
+            return Task.CompletedTask;
+        }
     };
 });
 builder.Services.AddAuthorization();
@@ -107,29 +126,32 @@ builder.Services.AddSwaggerGen(c =>
 // ==========================================
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-
-//app.UseHttpsRedirection();
 app.UseCors("PosCorsPolicy");
-app.UseAuthentication(); 
+app.UseAuthentication();
 app.UseAuthorization();
 
 // Map Endpoints
 app.MapControllers();
 app.MapHub<OrderHub>("/order-hub");
+app.MapHub<OrderHub>("/orderHub");
 app.UseHangfireDashboard("/hangfire");
 
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<OismDbContext>();
     await OISM.Infrastructure.Persistence.DataSeeder.SeedAsync(dbContext);
-}
 
+    var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+    recurringJobManager.AddOrUpdate<OrderExpirationJobService>(
+        "cancel-expired-reserved-orders",
+        service => service.CancelExpiredReservedOrdersAsync(),
+        "*/5 * * * *");
+}
 
 app.Run();
